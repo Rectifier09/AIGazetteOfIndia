@@ -4,11 +4,13 @@ from config import NVIDIA_API_KEY
 
 NVIDIA_EMBEDDINGS_URL = "https://integrate.api.nvidia.com/v1/embeddings"
 
-# nv-embedqa-1b-v2 is trained with Matryoshka Representation Learning, so
-# requesting 768 dims directly returns a properly-formed embedding at that
-# size (not a naive/degraded truncation of a larger vector) — and it matches
-# the notifications.embedding column, which is vector(768) (migrations/001_init.sql).
-EMBEDDING_MODEL = "nvidia/llama-3.2-nv-embedqa-1b-v2"
+# llama-3.2-nv-embedqa-1b-v2 reached end-of-life 2026-05-18 and returns 410 Gone.
+# llama-nemotron-embed-vl-1b-v2 is its successor and is Matryoshka-trained too,
+# so requesting 768 dims directly returns a properly-formed embedding at that
+# size (not a naive/degraded truncation of a larger vector) — verified live
+# against the real API. Matches the notifications.embedding column, which is
+# vector(768) (migrations/001_init.sql).
+EMBEDDING_MODEL = "nvidia/llama-nemotron-embed-vl-1b-v2"
 EMBEDDING_DIMENSIONS = 768
 
 
