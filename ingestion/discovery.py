@@ -31,6 +31,7 @@ causes the same generic 500 - the server apparently rejects postbacks
 missing any of the hidden fields it rendered, not just ones with bad values.
 """
 import io
+import logging
 import re
 import time
 from urllib.parse import urljoin
@@ -41,6 +42,8 @@ from bs4 import BeautifulSoup
 
 from download import pdf_url_for, download_pdf
 from ingest import ingest_notification
+
+logger = logging.getLogger(__name__)
 
 MINISTRY_LABOUR_AND_EMPLOYMENT = "28"
 
@@ -146,12 +149,16 @@ def discover_and_ingest(conn, ministry_id: str, start_year: int, end_year: int) 
     ingested = 0
     for year in range(start_year, end_year + 1):
         for month in range(1, 13):
+            logger.info(f"Searching {year}-{month:02d} for ministry {ministry_id}...")
             rows = search_month(session, base_url, ministry_id, year, month)
             time.sleep(REQUEST_DELAY_SECONDS)
+            logger.info(f"  Found {len(rows)} notification(s) for {year}-{month:02d}")
             for row in rows:
                 pdf_bytes = download_pdf(pdf_url_for(row["gazette_id"]))
                 time.sleep(REQUEST_DELAY_SECONDS)
                 raw_text = _pdf_to_text(pdf_bytes)
                 ingest_notification(conn, "central", raw_text)
+                conn.commit()
                 ingested += 1
+                logger.info(f"  Ingested {row['gazette_id']} ({ingested} total so far)")
     return ingested

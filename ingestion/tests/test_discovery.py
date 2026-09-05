@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from unittest.mock import patch
 
@@ -29,3 +30,18 @@ def test_discover_and_ingest_ingests_each_found_row(db_conn):
          patch("ingest.embed_text", return_value=[0.1] * 768):
         count = discover_and_ingest(db_conn, "28", 2025, 2025)
     assert count == 1
+
+
+def test_discover_and_ingest_logs_progress_per_month_and_row(db_conn, caplog):
+    fake_row = {"gazette_id": "CG-DL-E-22052025-263307", "subject": "COW",
+                "part_section": "Part II-Section 3", "issue_date": "22-May-2025", "publish_date": "22-May-2025"}
+    with patch("discovery.bootstrap_session", return_value=(None, "")), \
+         patch("discovery.search_month", side_effect=[[fake_row]] + [[]] * 11), \
+         patch("discovery.download_pdf", return_value=b"%PDF-fake"), \
+         patch("discovery._pdf_to_text", return_value="MINISTRY OF LABOUR AND EMPLOYMENT\nS.O. 1(E).— test"), \
+         patch("discovery.time.sleep"), \
+         patch("ingest.embed_text", return_value=[0.1] * 768), \
+         caplog.at_level(logging.INFO):
+        discover_and_ingest(db_conn, "28", 2025, 2025)
+    assert any("2025-01" in r.message or "2025/1" in r.message for r in caplog.records)
+    assert any("CG-DL-E-22052025-263307" in r.message for r in caplog.records)
