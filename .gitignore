@@ -15,5 +15,9 @@ node_modules/
 .env
 .env.local
 
+# ingestion runtime
+# Long backfill runs write ingestion/ingest.log
+*.log
+
 # OS
 .DS_Store

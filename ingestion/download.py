@@ -2,6 +2,10 @@
 import re
 import requests
 
+# Same browser UA discovery.py sends: some government hosts filter out the
+# default python-requests/... User-Agent.
+_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+
 
 def pdf_url_for(gazette_id: str) -> str:
     m = re.search(r"(\d{8})-(\d+)$", gazette_id)
@@ -13,6 +17,8 @@ def pdf_url_for(gazette_id: str) -> str:
 
 
 def download_pdf(url: str) -> bytes:
-    response = requests.get(url, verify=False, timeout=30)
+    response = requests.get(
+        url, headers={"User-Agent": _USER_AGENT}, verify=False, timeout=30
+    )
     response.raise_for_status()
     return response.content
