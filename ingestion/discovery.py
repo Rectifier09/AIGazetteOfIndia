@@ -31,6 +31,7 @@ causes the same generic 500 - the server apparently rejects postbacks
 missing any of the hidden fields it rendered, not just ones with bad values.
 """
 import re
+from urllib.parse import urljoin
 
 import requests
 from bs4 import BeautifulSoup
@@ -84,7 +85,7 @@ def search_month(session: requests.Session, base_url: str, ministry_id: str, yea
         verify=False,
         allow_redirects=False,
     )
-    ministry_url = menu_post.headers["location"]
+    ministry_url = urljoin(base_url, menu_post.headers["location"])
 
     form_page = session.get(ministry_url, headers={"Referer": base_url + "SearchMenu.aspx"}, verify=False)
     state = _extract_form_state(form_page.text)
