@@ -2,9 +2,7 @@
 from google import genai
 from config import GEMINI_API_KEY
 
-# Use a dummy key for testing if real key is not available
-api_key = GEMINI_API_KEY or "dummy-key-for-testing"
-_client = genai.Client(api_key=api_key)
+_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 EMBEDDING_MODEL = "gemini-embedding-001"
 
