@@ -30,13 +30,21 @@ __SCROLLPOSITIONX/Y or __VIEWSTATEENCRYPTED (even as empty strings) also
 causes the same generic 500 - the server apparently rejects postbacks
 missing any of the hidden fields it rendered, not just ones with bad values.
 """
+import io
 import re
+import time
 from urllib.parse import urljoin
 
+import pdfplumber
 import requests
 from bs4 import BeautifulSoup
 
+from download import pdf_url_for, download_pdf
+from ingest import ingest_notification
+
 MINISTRY_LABOUR_AND_EMPLOYMENT = "28"
+
+REQUEST_DELAY_SECONDS = 1.0  # politeness delay between requests to a government server
 
 _USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 
@@ -126,3 +134,24 @@ def parse_results_table(html: str) -> list[dict]:
             "gazette_id": cells[9],
         })
     return rows
+
+
+def _pdf_to_text(pdf_bytes: bytes) -> str:
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        return "\n".join(page.extract_text() or "" for page in pdf.pages)
+
+
+def discover_and_ingest(conn, ministry_id: str, start_year: int, end_year: int) -> int:
+    session, base_url = bootstrap_session()
+    ingested = 0
+    for year in range(start_year, end_year + 1):
+        for month in range(1, 13):
+            rows = search_month(session, base_url, ministry_id, year, month)
+            time.sleep(REQUEST_DELAY_SECONDS)
+            for row in rows:
+                pdf_bytes = download_pdf(pdf_url_for(row["gazette_id"]))
+                time.sleep(REQUEST_DELAY_SECONDS)
+                raw_text = _pdf_to_text(pdf_bytes)
+                ingest_notification(conn, "central", raw_text)
+                ingested += 1
+    return ingested
