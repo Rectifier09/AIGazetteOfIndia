@@ -202,7 +202,7 @@ def test_discover_and_ingest_continues_after_a_failing_month_search(db_conn):
 def test_discover_and_ingest_skips_already_ingested_without_downloading(db_conn, caplog):
     record = parse_central((Path(__file__).parent.parent / "samples" / "central_so_2455.txt").read_text())
     record.gazette_id = FAKE_ROW["gazette_id"]
-    insert_notification(db_conn, record, embedding=None, file_hash="pre-existing")
+    insert_notification(db_conn, record, file_hash="pre-existing")
     db_conn.commit()
 
     mock_download = Mock(return_value=b"%PDF-fake")
