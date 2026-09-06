@@ -73,7 +73,7 @@ backend/
 - Create: `backend/tests/conftest.py`
 
 **Interfaces:**
-- Produces: `get_connection() -> psycopg.Connection`, `GEMINI_API_KEY` from `app/config.py`; `AskRequest`, `AskResponse`, `Citation` Pydantic models from `app/models.py` — used by every later task in this plan.
+- Produces: `get_connection() -> psycopg.Connection`, `NVIDIA_API_KEY` and `GEMINI_API_KEY` from `app/config.py`; `AskRequest`, `AskResponse`, `Citation` Pydantic models from `app/models.py` — used by every later task in this plan.
 
 - [ ] **Step 1: Scaffold directories**
 
@@ -90,6 +90,7 @@ fastapi==0.115.*
 uvicorn[standard]==0.32.*
 psycopg[binary]==3.2.*
 google-genai==0.*
+requests==2.32.*
 pydantic==2.*
 python-dotenv==1.*
 pytest==8.*
@@ -101,6 +102,7 @@ httpx==0.27.*
 # backend/.env.example
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/egazette
 NVIDIA_API_KEY=
+GEMINI_API_KEY=
 ```
 
 > In production, `DATABASE_URL` points at the same Railway Postgres the ingestion pipeline populated. Locally, it points at this plan's own `docker-compose.yml` container (port `5432`, distinct from the ingestion plan's local container on `5433`).
@@ -188,6 +190,7 @@ load_dotenv()
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 NVIDIA_API_KEY = os.environ.get("NVIDIA_API_KEY", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 
 def get_connection() -> psycopg.Connection:
@@ -285,19 +288,19 @@ git commit -m "Scaffold Query API: config, models, local Postgres for tests"
 
 ---
 
-### Task 2: Gemini embedding wrapper (for embedding the user's question)
+### Task 2: NVIDIA embedding wrapper (for embedding the user's question)
 
 **Files:**
 - Create: `backend/app/embeddings.py`
 - Test: `backend/tests/test_embeddings.py`
 
 **Interfaces:**
-- Consumes: `GEMINI_API_KEY` from `app/config.py` (Task 1).
+- Consumes: `NVIDIA_API_KEY` from `app/config.py` (Task 1).
 - Produces: `embed_text(text: str) -> list[float]` from `app/embeddings.py`, used by `retrieval.py` (Task 3).
 
 **Note:** this is the same wrapper (same model, same shape) as the ingestion pipeline's `embeddings.py` — duplicated deliberately, not shared, so the two remain genuinely independent packages. It's ~15 lines; the alternative (a shared internal package) would add more operational complexity than it saves at this size.
 
-- [ ] **Step 1: Write the failing test (mocking the Gemini client, never calling the real API in tests)**
+- [ ] **Step 1: Write the failing test (mocking the NVIDIA HTTP call, never calling the real API in tests)**
 
 ```python
 # backend/tests/test_embeddings.py
@@ -391,7 +394,7 @@ Expected: PASS (1 passed)
 
 ```bash
 git add backend/app/embeddings.py backend/tests/test_embeddings.py
-git commit -m "Add Gemini embedding wrapper for query embedding"
+git commit -m "Add NVIDIA embedding wrapper for query embedding"
 ```
 
 ---
