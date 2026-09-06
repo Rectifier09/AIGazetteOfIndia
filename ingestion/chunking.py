@@ -23,12 +23,39 @@ def chunk_text(text: str, max_chars: int = 6000, overlap: int = 200) -> list[str
 
     for paragraph in paragraphs:
         if len(paragraph) > max_chars:
+            # Flush current with overlap preservation for hard-split boundary
             if current.strip():
                 chunks.append(current.strip())
-                current = ""
+                carry = current[-overlap:] if current else ""
+            else:
+                carry = ""
+
             step = max_chars - overlap
+            is_first_slice = True
+
             for start in range(0, len(paragraph), step):
-                chunks.append(paragraph[start:start + max_chars])
+                slice_chunk = paragraph[start:start + max_chars]
+
+                if is_first_slice and carry.strip():
+                    # Try to include carry in first hard-split slice
+                    slice_with_carry = f"{carry}\n\n{slice_chunk}"
+                    if len(slice_with_carry) <= max_chars:
+                        chunks.append(slice_with_carry)
+                    else:
+                        # Guard: drop carry if it would exceed max_chars
+                        chunks.append(slice_chunk)
+                else:
+                    chunks.append(slice_chunk)
+
+                is_first_slice = False
+
+            # Carry from last hard-split chunk into current for next paragraph
+            if chunks:
+                last_chunk = chunks[-1]
+                current = last_chunk[-overlap:] if len(last_chunk) >= overlap else last_chunk
+            else:
+                current = ""
+
             continue
 
         candidate = f"{current}\n\n{paragraph}" if current else paragraph
