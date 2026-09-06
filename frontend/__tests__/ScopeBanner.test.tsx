@@ -28,4 +28,10 @@ describe('ScopeBanner', () => {
     fireEvent.click(screen.getByText(/clear history/i))
     expect(onClearHistory).toHaveBeenCalled()
   })
+
+  it('tapping the collapsed strip expands it to show example chips', () => {
+    render(<ScopeBanner collapsed={true} onClearHistory={jest.fn()} exampleQuestions={examples} onExampleClick={jest.fn()} />)
+    fireEvent.click(screen.getByText(/Covers:/i))
+    expect(screen.getByText(examples[0])).toBeInTheDocument()
+  })
 })
