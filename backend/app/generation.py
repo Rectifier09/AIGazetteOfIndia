@@ -2,7 +2,17 @@ from google import genai
 from app.config import GEMINI_API_KEY
 from app.models import AskResponse, Citation
 
-_client = genai.Client(api_key=GEMINI_API_KEY)
+_client: genai.Client | None = None
+
+
+def _get_client() -> genai.Client:
+    global _client
+    if _client is None:
+        if not GEMINI_API_KEY:
+            raise RuntimeError("GEMINI_API_KEY is not set — cannot call the generation API.")
+        _client = genai.Client(api_key=GEMINI_API_KEY)
+    return _client
+
 
 GENERATION_MODEL = "gemini-flash-latest"
 MIN_RELEVANCE_SCORE = 0.0  # tune from eval results (Task 6) — do not guess a value here
@@ -38,7 +48,7 @@ def generate_answer(question: str, passages: list[dict], history: list[dict]) ->
         return AskResponse(answer=REFUSAL_MESSAGE, refused=True, citations=[])
 
     prompt = _build_prompt(question, relevant, history)
-    response = _client.models.generate_content(model=GENERATION_MODEL, contents=prompt)
+    response = _get_client().models.generate_content(model=GENERATION_MODEL, contents=prompt)
 
     citations = [
         Citation(
