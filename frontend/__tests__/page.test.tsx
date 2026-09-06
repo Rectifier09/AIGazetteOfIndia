@@ -93,6 +93,29 @@ describe('Page', () => {
     expect(screen.getByRole('textbox')).toHaveValue(exampleText)
   })
 
+  it('does not resurrect cleared cards when a new question is answered afterward', async () => {
+    ;(api.askQuestion as jest.Mock).mockResolvedValue({ answer: 'A1', refused: false, citations: [], disclaimer: 'd' })
+
+    render(<Page />)
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Q1' } })
+    fireEvent.click(screen.getByText('Ask'))
+    await waitFor(() => expect(screen.getByText('A1')).toBeInTheDocument())
+    expect(localStorage.getItem('egazette_history')).not.toBeNull()
+
+    fireEvent.click(screen.getByText(/clear history/i))
+    expect(localStorage.getItem('egazette_history')).toBeNull()
+
+    ;(api.askQuestion as jest.Mock).mockResolvedValue({ answer: 'A2', refused: false, citations: [], disclaimer: 'd' })
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Q2' } })
+    fireEvent.click(screen.getByText('Ask'))
+    await waitFor(() => expect(screen.getByText('A2')).toBeInTheDocument())
+
+    const stored = JSON.parse(localStorage.getItem('egazette_history') || '[]')
+    expect(stored).toHaveLength(1)
+    expect(stored[0].question).toBe('Q2')
+    expect(screen.queryByText(/Q: Q1/)).not.toBeInTheDocument()
+  })
+
   it('does not persist a card that is still loading (e.g. after a refresh mid-request)', async () => {
     ;(api.askQuestion as jest.Mock).mockReturnValue(new Promise(() => {})) // never resolves
 

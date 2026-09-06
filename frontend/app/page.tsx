@@ -83,6 +83,11 @@ export default function Page() {
   function handleClearHistory() {
     clearHistory()
     setHistoricalCards([])
+    // Also drop terminal-status session cards, not just historicalCards —
+    // otherwise the next answered/refused/error card re-triggers the
+    // persist effect with the pre-clear cards still in sessionCards,
+    // silently resurrecting everything "Clear history" just wiped.
+    setSessionCards((prev) => prev.filter((c) => c.status === 'loading-searching' || c.status === 'loading-drafting'))
   }
 
   function handleExampleClick(question: string) {

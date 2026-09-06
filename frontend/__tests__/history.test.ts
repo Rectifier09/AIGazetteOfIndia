@@ -36,4 +36,18 @@ describe('history persistence', () => {
     const label = getSessionDividerLabel()
     expect(label).toMatch(/New session/)
   })
+
+  it('returns an empty array and clears storage when the stored value is not valid JSON', () => {
+    localStorage.setItem('egazette_history', '{not json')
+    localStorage.setItem('egazette_history_savedAt', String(Date.now()))
+    expect(loadHistory()).toEqual([])
+    expect(localStorage.getItem('egazette_history')).toBeNull()
+  })
+
+  it('returns an empty array and clears storage when the stored value is valid JSON but not an array', () => {
+    localStorage.setItem('egazette_history', JSON.stringify({ not: 'an array' }))
+    localStorage.setItem('egazette_history_savedAt', String(Date.now()))
+    expect(loadHistory()).toEqual([])
+    expect(localStorage.getItem('egazette_history')).toBeNull()
+  })
 })
