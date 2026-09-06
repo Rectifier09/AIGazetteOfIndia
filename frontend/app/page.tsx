@@ -32,8 +32,16 @@ export default function Page() {
   }, [])
 
   useEffect(() => {
-    if (sessionCards.length > 0) {
-      saveHistory([...historicalCards, ...sessionCards])
+    // Only persist cards that reached a terminal state. A card still stuck
+    // at 'loading-searching'/'loading-drafting' means its request never
+    // finished (e.g. the tab was closed or refreshed mid-request); saving it
+    // would restore a permanently-stuck loading indicator on next visit,
+    // with no way to retry or dismiss it.
+    const persistable = sessionCards.filter(
+      (c) => c.status === 'answered' || c.status === 'refused' || c.status === 'error'
+    )
+    if (persistable.length > 0) {
+      saveHistory([...historicalCards, ...persistable])
     }
   }, [sessionCards])
 

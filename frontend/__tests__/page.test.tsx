@@ -57,4 +57,50 @@ describe('Page', () => {
     fireEvent.click(screen.getByText(/clear history/i))
     expect(localStorage.getItem('egazette_history')).toBeNull()
   })
+
+  it('shows the backend error detail on the error card when the request fails', async () => {
+    ;(api.askQuestion as jest.Mock).mockRejectedValue(
+      new Error('The database is temporarily unavailable — please try again shortly.')
+    )
+
+    render(<Page />)
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Is it in force?' } })
+    fireEvent.click(screen.getByText('Ask'))
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('The database is temporarily unavailable — please try again shortly.')
+      ).toBeInTheDocument()
+    )
+    // The generic fallback text should not be shown when a real detail message is available.
+    expect(screen.queryByText('Something went wrong answering this.')).not.toBeInTheDocument()
+  })
+
+  it('clicking the same example chip again re-populates the input, even after it was edited', () => {
+    render(<Page />)
+    const exampleText = 'Is the Code on Wages in force in Gujarat?'
+
+    fireEvent.click(screen.getByText(exampleText))
+    expect(screen.getByRole('textbox')).toHaveValue(exampleText)
+
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'something the user typed instead' } })
+    expect(screen.getByRole('textbox')).toHaveValue('something the user typed instead')
+
+    // Re-clicking the SAME chip: the `prefill` string prop doesn't change,
+    // so this only works if page.tsx forces InputBar to remount (via a
+    // changing `key`) rather than relying on InputBar's prefill effect.
+    fireEvent.click(screen.getByText(exampleText))
+    expect(screen.getByRole('textbox')).toHaveValue(exampleText)
+  })
+
+  it('does not persist a card that is still loading (e.g. after a refresh mid-request)', async () => {
+    ;(api.askQuestion as jest.Mock).mockReturnValue(new Promise(() => {})) // never resolves
+
+    render(<Page />)
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Is it in force?' } })
+    fireEvent.click(screen.getByText('Ask'))
+
+    await waitFor(() => expect(screen.getByText(/drafting/i)).toBeInTheDocument())
+    expect(localStorage.getItem('egazette_history')).toBeNull()
+  })
 })
