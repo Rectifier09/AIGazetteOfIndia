@@ -1,3 +1,4 @@
+import pytest
 from chunking import chunk_text
 
 
@@ -38,68 +39,52 @@ def test_overlap_is_present_between_consecutive_packed_chunks():
 
 
 def test_overlap_at_hard_split_boundaries():
-    # Normal paragraph, then hard-split paragraph, then another normal paragraph
-    # This tests overlap at both edges of the hard-split: entering and exiting
-    para1 = "Normal text. " * 300  # ~3600 chars
-    para2 = "x" * 10000  # Hard-split at 6000 chars each
-    para3 = "More text. " * 300  # ~3300 chars
-    text = "\n\n".join([para1, para2, para3])
+    # Distinguishable content on each side of the hard split lets this test
+    # prove exactly which characters crossed which boundary, instead of a
+    # same-character-filler window that could match anywhere.
+    para1 = "AAA1. " * 500
+    hard = "B" * 10000
+    para3 = "CCC3. " * 500
+    text = f"{para1}\n\n{hard}\n\n{para3}"
     chunks = chunk_text(text, max_chars=6000, overlap=200)
 
-    # Find chunks containing para1 and para3
-    para1_chunk_idx = None
-    para3_chunk_idx = None
-    for i, chunk in enumerate(chunks):
-        if "Normal text." in chunk:
-            para1_chunk_idx = i
-        if "More text." in chunk:
-            para3_chunk_idx = i
+    # Entry boundary: para1's own chunk and the hard split's first slice
+    # share exactly `overlap` characters.
+    para1_idx = chunks.index(para1.strip())
+    assert chunks[para1_idx][-200:] == chunks[para1_idx + 1][:200]
 
-    assert para1_chunk_idx is not None
-    assert para3_chunk_idx is not None
-    assert para3_chunk_idx > para1_chunk_idx
-
-    # Verify entry-side overlap: para1 chunk should have overlap at the start of the first hard-split chunk
-    para1_chunk = chunks[para1_chunk_idx]
-    first_hard_split_chunk = chunks[para1_chunk_idx + 1]
-    entry_overlap = para1_chunk[-200:]
-    assert entry_overlap in first_hard_split_chunk, "Overlap missing at entry to hard-split"
-
-    # Verify exit-side overlap: last hard-split chunk should have its last 200 chars in para3 chunk
-    last_hard_split_chunk = chunks[para3_chunk_idx - 1]
-    para3_chunk = chunks[para3_chunk_idx]
-    exit_overlap = last_hard_split_chunk[-200:]
-    assert exit_overlap in para3_chunk, "Overlap missing at exit from hard-split"
+    # Exit boundary: the hard split's last slice and whatever chunk para3
+    # ends up in share exactly `overlap` characters.
+    para3_idx = next(i for i, c in enumerate(chunks) if para3.strip() in c)
+    assert chunks[para3_idx - 1][-200:] == chunks[para3_idx][:200]
 
 
 def test_consecutive_oversized_paragraphs_no_duplicates():
-    # Two consecutive oversized paragraphs separated by blank lines
-    # Should produce hard-split chunks with overlap but no duplicate carry-seed chunks
-    para1 = "a" * 10000
-    para2 = "b" * 10000
-    text = "\n\n".join([para1, para2])
+    para1 = "P" * 10000
+    para2 = "Q" * 10000
+    text = f"{para1}\n\n{para2}"
     chunks = chunk_text(text, max_chars=6000, overlap=200)
 
-    # Should have multiple chunks from both hard-splits
-    assert len(chunks) >= 4
+    assert len(chunks) == len(set(chunks))
+    assert all(len(c) <= 6000 for c in chunks)
+    # The bare carry-seed from the first hard split must never become its
+    # own standalone chunk when the second hard split immediately follows.
+    assert "P" * 200 not in chunks
 
-    # All chunks should be <= max_chars
+
+def test_hard_split_followed_by_paragraph_too_big_for_seed_produces_no_duplicate_chunk():
+    text = "x" * 10000 + "\n\n" + "y" * 5900
+    chunks = chunk_text(text, max_chars=6000, overlap=200)
+    assert len(chunks) == len(set(chunks))
     assert all(len(c) <= 6000 for c in chunks)
 
-    # Check that no chunk appears twice (no duplicates of carry-seed)
-    assert len(chunks) == len(set(chunks)), "Duplicate chunks found"
 
-    # Verify overlap between the boundary of the two hard-splits
-    # Find the transition point between para1's hard-split and para2's hard-split
-    transition_idx = None
-    for i in range(len(chunks) - 1):
-        # para1 chunks contain only 'a', para2 chunks contain only 'b' (after transition)
-        # Look for the chunk before the first 'b'-only chunk
-        if chunks[i].strip("a") == "" and chunks[i + 1].strip("b") == "":
-            transition_idx = i
-            break
+def test_carry_recovers_real_content_past_trailing_whitespace():
+    text = "IMPORTANT-CONTENT" + " " * 300 + "\n\n" + "q" * 8000
+    chunks = chunk_text(text, max_chars=6000, overlap=200)
+    assert any("IMPORTANT-CONTENT" in c for c in chunks)
 
-    if transition_idx is not None:
-        # The transition chunks should have overlap
-        boundary_overlap = chunks[transition_idx][-200:]
-        assert boundary_overlap in chunks[transition_idx + 1], "Overlap missing between consecutive hard-splits"
+
+def test_overlap_must_be_smaller_than_max_chars():
+    with pytest.raises(ValueError, match="overlap"):
+        chunk_text("some text", max_chars=100, overlap=100)

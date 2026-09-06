@@ -36,7 +36,7 @@ backend/
     __init__.py
     config.py                   # env var loading
     models.py                   # Pydantic: AskRequest, AskResponse, Citation
-    embeddings.py                # Gemini embedding wrapper (embeds the user's question)
+    embeddings.py                # NVIDIA embedding wrapper (embeds the user's question)
     generation.py                 # Gemini generation wrapper + citation-or-refusal enforcement
     retrieval.py                 # hybrid search: FTS + vector + RRF merge, direct SQL
     main.py                      # FastAPI app: POST /ask, GET /health

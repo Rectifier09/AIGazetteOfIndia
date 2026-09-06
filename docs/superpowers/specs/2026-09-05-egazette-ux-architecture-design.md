@@ -326,6 +326,8 @@ Given that decision, the design is:
 - **Chunking:** one embedding per notification for v1 (real notifications are
   short — typically one paragraph of operative text per the samples) — no
   sub-clause chunking yet.
+  **Superseded** by `docs/superpowers/specs/2026-09-06-notification-chunking-design.md`,
+  which introduces multi-chunk embedding per notification.
 - **Retrieval:** Postgres full-text search (on `operative_text`,
   `act_reference`, `notification_number`) and pgvector cosine similarity
   search run in parallel; results merged via **reciprocal rank fusion** (a

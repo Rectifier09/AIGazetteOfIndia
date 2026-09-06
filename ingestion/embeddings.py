@@ -8,8 +8,8 @@ NVIDIA_EMBEDDINGS_URL = "https://integrate.api.nvidia.com/v1/embeddings"
 # llama-nemotron-embed-vl-1b-v2 is its successor and is Matryoshka-trained too,
 # so requesting 768 dims directly returns a properly-formed embedding at that
 # size (not a naive/degraded truncation of a larger vector) — verified live
-# against the real API. Matches the notifications.embedding column, which is
-# vector(768) (migrations/001_init.sql).
+# against the real API. Matches the notification_chunks.embedding column,
+# which is vector(768) (migrations/001_init.sql).
 EMBEDDING_MODEL = "nvidia/llama-nemotron-embed-vl-1b-v2"
 EMBEDDING_DIMENSIONS = 768
 
