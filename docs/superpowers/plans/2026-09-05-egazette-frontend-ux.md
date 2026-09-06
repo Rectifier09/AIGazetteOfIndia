@@ -18,7 +18,7 @@
 - Restored history (above the session divider) is reference-only and must never be sent as `history` in a new `POST /ask` call — only same-visit cards count as context (spec §4.7).
 - History cap: last ~50 exchanges or 30 days, pruning oldest first (spec §4.7).
 - "View original PDF" always links out to the official source in a new tab — never an in-app PDF viewer (spec §4.3).
-- Visual direction is "trustworthy & official" (spec §4.10): one restrained accent color, serif headers + sans body, monospace-styled citation blocks, no mascot/illustration/emoji in production UI.
+- Visual direction follows `docs/superpowers/specs/2026-09-06-egazette-design-system.md` in full — not spec §4.10's original one-paragraph placeholder. Concrete values: accent `#1B3A5B` (deep blue); IBM Plex Serif (headers/questions, 600 weight) + IBM Plex Sans (body/UI, 400/500) + IBM Plex Mono (citations, 400) as one family in three cuts; Lucide icons only — **no emoji anywhere in production UI**, including loading-state and disclaimer icons (the original UX spec's inline "🔍"/"✎"/"⚠" characters were a placeholder written before the design system existed and must not ship); full glassmorphism — header, pinned input bar, answer card, and citation block are all frosted-glass surfaces (`rgba(251,251,250,0.72)` general surface, `rgba(245,244,239,0.45)` citation surface, both with `backdrop-filter: blur(...)`) — a deliberate risk acceptance on citation legibility, made after seeing the trade-off directly, not an oversight; radius scale `--radius-sm` 8px / `--radius-md` 12px (citation blocks) / `--radius-lg` 20px (scope banner, pill-style) / `--radius-xl` 14px (header, input bar, card container); light mode only, no dark mode for v1.
 - Deployment: Vercel (spec's open deployment-split item — resolved here; backend is a separate Railway service per the backend plan).
 
 ---
@@ -344,7 +344,11 @@ git commit -m "Add localStorage history with pruning and session-divider label"
 **Interfaces:**
 - Produces: `<ScopeBanner collapsed={boolean} onClearHistory={() => void} exampleQuestions={string[]} onExampleClick={(q: string) => void} />` from `frontend/components/ScopeBanner.tsx`, used by `page.tsx` (Task 6).
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Install `lucide-react`** (first task in this plan that needs an icon — installed here rather than in Task 1, matching the install-when-first-needed pattern this plan already uses for `uuid` in Task 7)
+
+Run: `cd frontend && npm install lucide-react`
+
+- [ ] **Step 2: Write the failing test**
 
 ```tsx
 // frontend/__tests__/ScopeBanner.test.tsx
@@ -381,16 +385,18 @@ describe('ScopeBanner', () => {
 })
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [ ] **Step 3: Run to verify it fails**
 
 Run: `cd frontend && npm test -- ScopeBanner.test.tsx`
 Expected: FAIL — `Cannot find module '@/components/ScopeBanner'`
 
-- [ ] **Step 3: Implement `ScopeBanner.tsx`**
+- [ ] **Step 4: Implement `ScopeBanner.tsx`** — glass surfaces and the accent-tinted `Info` icon per the design system (`docs/superpowers/specs/2026-09-06-egazette-design-system.md`), not plain white/emoji
 
 ```tsx
 // frontend/components/ScopeBanner.tsx
 'use client'
+
+import { Info } from 'lucide-react'
 
 interface ScopeBannerProps {
   collapsed: boolean
@@ -402,26 +408,32 @@ interface ScopeBannerProps {
 export default function ScopeBanner({ collapsed, onClearHistory, exampleQuestions, onExampleClick }: ScopeBannerProps) {
   if (collapsed) {
     return (
-      <div className="border-b border-neutral-200 px-4 py-2 text-sm text-neutral-600 flex justify-between items-center">
-        <span>ℹ Covers: Code on Wages · Industrial Relations Code · OSH Code · Code on Social Security — Central &amp; Gujarat Gazette only</span>
-        <button onClick={onClearHistory} className="underline text-neutral-500 hover:text-neutral-800">Clear history</button>
+      <div className="flex justify-between items-center gap-3 px-4 py-2 mx-3 my-2 text-sm text-[#33475b] bg-[rgba(238,242,246,0.72)] backdrop-blur-md rounded-full">
+        <span className="flex items-center gap-2">
+          <Info size={16} className="text-accent shrink-0" />
+          Covers: Code on Wages · Industrial Relations Code · OSH Code · Code on Social Security — Central &amp; Gujarat Gazette only
+        </span>
+        <button onClick={onClearHistory} className="underline text-neutral-500 hover:text-neutral-800 shrink-0">Clear history</button>
       </div>
     )
   }
 
   return (
-    <div className="border-b border-neutral-200 px-4 py-6">
-      <p className="text-sm text-neutral-700">
-        ℹ Covers: Code on Wages · Industrial Relations Code · OSH Code · Code on Social Security
-        <br />
-        Sources: Central Gazette + Gujarat Gazette
+    <div className="px-4 py-4 mx-3 my-3 bg-[rgba(238,242,246,0.72)] backdrop-blur-md rounded-lg">
+      <p className="text-sm text-[#33475b] flex gap-2">
+        <Info size={16} className="text-accent shrink-0 mt-0.5" />
+        <span>
+          Covers: Code on Wages · Industrial Relations Code · OSH Code · Code on Social Security
+          <br />
+          Sources: Central Gazette + Gujarat Gazette
+        </span>
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
         {exampleQuestions.map((q) => (
           <button
             key={q}
             onClick={() => onExampleClick(q)}
-            className="text-sm border border-neutral-300 rounded-full px-3 py-1 hover:bg-neutral-50"
+            className="text-sm border border-neutral-300 rounded-full px-3 py-1 hover:bg-white/50"
           >
             {q}
           </button>
@@ -435,15 +447,15 @@ export default function ScopeBanner({ collapsed, onClearHistory, exampleQuestion
 }
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [ ] **Step 5: Run to verify it passes**
 
 Run: `cd frontend && npm test -- ScopeBanner.test.tsx`
-Expected: PASS (4 passed)
+Expected: PASS (4 passed) — the test file itself needs no changes; it asserts on text content and click behavior, both unchanged by the glass/icon styling.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add frontend/components/ScopeBanner.tsx frontend/__tests__/ScopeBanner.test.tsx
+git add frontend/package.json frontend/package-lock.json frontend/components/ScopeBanner.tsx frontend/__tests__/ScopeBanner.test.tsx
 git commit -m "Add ScopeBanner component with collapse and example chips"
 ```
 
@@ -519,12 +531,13 @@ describe('QACard', () => {
 Run: `cd frontend && npm test -- QACard.test.tsx`
 Expected: FAIL — `Cannot find module '@/components/QACard'`
 
-- [ ] **Step 3: Implement `QACard.tsx`**
+- [ ] **Step 3: Implement `QACard.tsx`** — glass card and citation surfaces, IBM Plex Mono citations, and Lucide icons in place of every emoji character (design-system spec, not the older plain-Tailwind/emoji sketch)
 
 ```tsx
 // frontend/components/QACard.tsx
 'use client'
 
+import { Search, PenLine, TriangleAlert, ExternalLink } from 'lucide-react'
 import type { QACardData } from '@/lib/types'
 
 interface QACardProps {
@@ -534,37 +547,61 @@ interface QACardProps {
 
 export default function QACard({ data, onRetry }: QACardProps) {
   const borderClass =
-    data.status === 'error' ? 'border-red-300' : data.status === 'refused' ? 'border-amber-300' : 'border-neutral-200'
+    data.status === 'error' ? 'border-[#A13B3B]/40' : data.status === 'refused' ? 'border-[#B8860B]/40' : 'border-white/60'
 
   return (
-    <div className={`border rounded-lg p-4 mb-3 ${borderClass} ${data.isHistorical ? 'opacity-60' : ''}`}>
-      <p className="font-serif font-semibold mb-2">Q: {data.question}</p>
+    <div
+      className={`border ${borderClass} rounded-xl p-6 mb-3 bg-[rgba(251,251,250,0.72)] backdrop-blur-md ${data.isHistorical ? 'opacity-60' : ''}`}
+    >
+      <p className="font-serif font-semibold text-lg mb-2">Q: {data.question}</p>
 
-      {data.status === 'loading-searching' && <p className="text-neutral-500">🔍 Searching Central &amp; Gujarat notifications…</p>}
-      {data.status === 'loading-drafting' && <p className="text-neutral-500">✎ Drafting answer from matching notification(s)</p>}
+      {data.status === 'loading-searching' && (
+        <p className="text-neutral-500 flex items-center gap-2">
+          <Search size={16} /> Searching Central &amp; Gujarat notifications…
+        </p>
+      )}
+      {data.status === 'loading-drafting' && (
+        <p className="text-neutral-500 flex items-center gap-2">
+          <PenLine size={16} /> Drafting answer from matching notification(s)
+        </p>
+      )}
 
       {data.status === 'refused' && <p>{data.answer}</p>}
 
       {data.status === 'error' && (
         <div>
-          <p className="text-red-700">⚠ Something went wrong answering this.</p>
-          <button onClick={() => onRetry(data.id)} className="mt-2 underline text-red-700">Try again</button>
+          <p className="text-[#A13B3B] flex items-center gap-2">
+            <TriangleAlert size={16} /> Something went wrong answering this.
+          </p>
+          <button onClick={() => onRetry(data.id)} className="mt-2 underline text-[#A13B3B]">Try again</button>
         </div>
       )}
 
       {data.status === 'answered' && (
         <div>
-          <p className="mb-3">{data.answer}</p>
+          <p className="text-[15px] mb-4">{data.answer}</p>
           {data.citations?.map((c, i) => (
-            <div key={i} className="font-mono text-sm bg-neutral-50 border border-neutral-200 rounded p-2 mb-2">
+            <div
+              key={i}
+              className="font-mono text-xs bg-[rgba(245,244,239,0.45)] backdrop-blur-sm border border-white/40 rounded-md p-3 mb-2"
+            >
               <p>Source: {c.source === 'central' ? 'Central Gazette' : 'Gujarat Government Gazette'} · {c.gazette_id} · {c.part}{c.section ? ` · ${c.section}` : ''} · {c.notification_date}</p>
               <p className="italic mt-1">&quot;{c.passage}&quot;</p>
               {c.source_url && (
-                <a href={c.source_url} target="_blank" rel="noopener noreferrer" className="underline">View original PDF →</a>
+                <a
+                  href={c.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 underline text-[#0071E3] font-sans not-italic mt-1"
+                >
+                  View original PDF <ExternalLink size={12} />
+                </a>
               )}
             </div>
           ))}
-          <p className="text-amber-700 text-sm mt-2">⚠︎ {data.disclaimer}</p>
+          <p className="text-[#9a9a94] text-xs mt-2 flex items-center gap-2">
+            <TriangleAlert size={14} className="text-[#B8860B]" /> {data.disclaimer}
+          </p>
         </div>
       )}
     </div>
@@ -575,7 +612,7 @@ export default function QACard({ data, onRetry }: QACardProps) {
 - [ ] **Step 4: Run to verify it passes**
 
 Run: `cd frontend && npm test -- QACard.test.tsx`
-Expected: PASS (5 passed)
+Expected: PASS (5 passed) — the test file needs no changes; every assertion matches on text content (e.g. `/searching/i`, `/View original PDF/i`) which Testing Library resolves against the element's aggregate text, unaffected by an adjacent icon SVG contributing no text nodes.
 
 - [ ] **Step 5: Commit**
 
@@ -644,7 +681,7 @@ describe('InputBar', () => {
 Run: `cd frontend && npm test -- InputBar.test.tsx`
 Expected: FAIL — `Cannot find module '@/components/InputBar'`
 
-- [ ] **Step 3: Implement `InputBar.tsx`**
+- [ ] **Step 3: Implement `InputBar.tsx`** — the bar itself is a glass surface; the text field inside it is a distinct, slightly-more-opaque surface so the typing area stays visually separable from the glass bar around it (design-system spec §7)
 
 ```tsx
 // frontend/components/InputBar.tsx
@@ -669,7 +706,7 @@ export default function InputBar({ onSubmit, prefill }: InputBarProps) {
   }
 
   return (
-    <div className="border-t border-neutral-200 p-3 flex gap-2 sticky bottom-0 bg-white">
+    <div className="sticky bottom-0 p-3 flex gap-2 bg-[rgba(251,251,250,0.75)] backdrop-blur-md border-t border-white/50">
       <textarea
         role="textbox"
         value={value}
@@ -682,9 +719,9 @@ export default function InputBar({ onSubmit, prefill }: InputBarProps) {
         }}
         placeholder="Ask a question..."
         rows={1}
-        className="flex-1 border border-neutral-300 rounded px-3 py-2 resize-none"
+        className="flex-1 bg-white/60 border border-neutral-300 rounded-sm px-3 py-2 resize-none"
       />
-      <button onClick={submit} className="bg-neutral-900 text-white rounded px-4 py-2">Ask</button>
+      <button onClick={submit} className="bg-accent text-white rounded-sm px-4 py-2">Ask</button>
     </div>
   )
 }
@@ -693,7 +730,7 @@ export default function InputBar({ onSubmit, prefill }: InputBarProps) {
 - [ ] **Step 4: Run to verify it passes**
 
 Run: `cd frontend && npm test -- InputBar.test.tsx`
-Expected: PASS (4 passed)
+Expected: PASS (4 passed) — the test file needs no changes; `role="textbox"` and the "Ask" button text are unchanged.
 
 - [ ] **Step 5: Commit**
 
@@ -850,9 +887,11 @@ export default function Page() {
   const allCards = [...historicalCards, ...sessionCards]
 
   return (
-    <main className="max-w-2xl mx-auto flex flex-col h-screen">
-      <header className="px-4 py-3 border-b border-neutral-200">
-        <h1 className="font-serif text-lg">AI Gazette of India · Labour Codes</h1>
+    <main className="max-w-2xl mx-auto flex flex-col h-screen bg-[#FBFBFA]">
+      <header className="sticky top-0 z-10 px-4 py-3 bg-[rgba(251,251,250,0.72)] backdrop-blur-md border-b border-white/50">
+        <h1 className="font-serif text-lg text-accent">
+          AI Gazette of India <span className="font-sans text-sm font-normal opacity-50">· Labour Codes</span>
+        </h1>
       </header>
       <ScopeBanner
         collapsed={allCards.length > 0}
@@ -898,36 +937,37 @@ git commit -m "Wire ScopeBanner, QACard, InputBar, API client, and history into 
 
 ---
 
-### Task 8: Visual theme (trustworthy & official)
+### Task 8: Design system tokens (fonts, color, radius scale)
 
 **Files:**
 - Modify: `frontend/tailwind.config.ts`
-- Modify: `frontend/app/globals.css`
 - Modify: `frontend/app/layout.tsx`
 
 **Interfaces:**
-- Consumes: nothing new — this task restyles existing components (Tasks 4–6) via Tailwind config and font imports, no prop/interface changes.
+- Consumes: nothing new. Tasks 4–7 already wrote every component's markup and Tailwind classes directly against the design system's real values (glass surfaces, IBM Plex font-family names, accent/citation colors, `rounded-sm`/`md`/`lg`/`xl` radius classes) — none of that is a placeholder waiting on this task. This task's only remaining job is to make those class names actually resolve to the right values: load the three IBM Plex cuts as real fonts (not a fallback), and map the radius/color utility names Tasks 4–7 already used to the design system's exact token values.
+- Produces: no new prop/interface — wires `next/font/google` + `tailwind.config.ts` so `font-serif`/`font-sans`/`font-mono`/`bg-accent`(-adjacent literals)/`rounded-sm`/`rounded-md`/`rounded-lg`/`rounded-xl` resolve correctly everywhere they're already used.
 
-- [ ] **Step 1: Add the font pairing (serif for headers, sans for body) via `next/font`**
+- [ ] **Step 1: Load IBM Plex Serif, Sans, and Mono via `next/font/google`** — one family, three cuts, per the design system (not Fraunces/Inter, which were an earlier, pre-design-system placeholder pairing)
 
 ```tsx
 // frontend/app/layout.tsx
-import { Fraunces, Inter } from 'next/font/google'
+import { IBM_Plex_Serif, IBM_Plex_Sans, IBM_Plex_Mono } from 'next/font/google'
 import './globals.css'
 
-const fraunces = Fraunces({ subsets: ['latin'], variable: '--font-serif' })
-const inter = Inter({ subsets: ['latin'], variable: '--font-sans' })
+const plexSerif = IBM_Plex_Serif({ subsets: ['latin'], weight: ['600'], variable: '--font-serif' })
+const plexSans = IBM_Plex_Sans({ subsets: ['latin'], weight: ['400', '500', '600'], variable: '--font-sans' })
+const plexMono = IBM_Plex_Mono({ subsets: ['latin'], weight: ['400'], variable: '--font-mono' })
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${fraunces.variable} ${inter.variable}`}>
-      <body className="font-sans bg-white text-neutral-900">{children}</body>
+    <html lang="en" className={`${plexSerif.variable} ${plexSans.variable} ${plexMono.variable}`}>
+      <body className="font-sans bg-[#FBFBFA] text-[#171717]">{children}</body>
     </html>
   )
 }
 ```
 
-- [ ] **Step 2: Wire the fonts and accent color into Tailwind config**
+- [ ] **Step 2: Wire the font variables, accent color, and radius scale into Tailwind config**
 
 ```typescript
 // frontend/tailwind.config.ts
@@ -940,39 +980,39 @@ export default {
       fontFamily: {
         serif: ['var(--font-serif)'],
         sans: ['var(--font-sans)'],
+        mono: ['var(--font-mono)'],
       },
       colors: {
-        accent: { DEFAULT: '#1E3A5F' }, // restrained deep blue, per spec §4.10
+        accent: '#1B3A5B',
+      },
+      borderRadius: {
+        sm: '8px',
+        md: '12px',
+        lg: '20px',
+        xl: '14px',
       },
     },
   },
 } satisfies Config
 ```
 
-- [ ] **Step 3: Apply `font-serif` to question headers and the site title**
+`rounded-sm`/`md`/`lg`/`xl` now resolve to the design system's exact scale everywhere Tasks 4, 5, and 6 already used them (input field, citation blocks, scope banner, card/header/input-bar containers respectively) — no component file changes needed here, only this config.
 
-Update `frontend/components/QACard.tsx`'s question line and `frontend/app/page.tsx`'s `<h1>` — both already carry `font-serif` from Task 5/7's implementation; confirm this visually matches by running the dev server.
+- [ ] **Step 3: Manually verify in a browser**
 
 Run: `cd frontend && npm run dev`
-Expected: manually confirm in a browser at `localhost:3000` — serif headers, sans body, deep-blue accent visible on the "Ask" button (add `bg-accent` class to replace `bg-neutral-900` in `InputBar.tsx`).
+Expected: confirm at `localhost:3000` — IBM Plex Serif on question headers and the site title, IBM Plex Sans on body text, IBM Plex Mono on citation blocks, deep-blue `#1B3A5B` accent on the "Ask" button and header title, glass/frosted surfaces visible on the header, scope banner, cards, citation blocks, and the pinned input bar.
 
-- [ ] **Step 4: Update `InputBar.tsx`'s button to use the accent color**
-
-```tsx
-// frontend/components/InputBar.tsx — change this one line
-<button onClick={submit} className="bg-accent text-white rounded px-4 py-2">Ask</button>
-```
-
-- [ ] **Step 5: Run the full test suite to confirm the styling change didn't break behavior**
+- [ ] **Step 4: Run the full test suite to confirm the config change didn't break behavior**
 
 Run: `cd frontend && npm test`
-Expected: all tests still pass (tests assert on text/roles, not class names).
+Expected: all tests still pass (tests assert on text/roles, not class names or fonts).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add frontend/app/layout.tsx frontend/tailwind.config.ts frontend/components/InputBar.tsx
-git commit -m "Apply trustworthy/official visual theme: serif+sans pairing, accent color"
+git add frontend/app/layout.tsx frontend/tailwind.config.ts
+git commit -m "Wire IBM Plex fonts and design-system color/radius tokens into Tailwind config"
 ```
 
 ---
@@ -1002,29 +1042,31 @@ it('tapping the collapsed strip expands it to show example chips', () => {
 Run: `cd frontend && npm test -- ScopeBanner.test.tsx`
 Expected: FAIL — clicking the collapsed strip currently does nothing.
 
-- [ ] **Step 3: Implement tap-to-expand as internal state**
+- [ ] **Step 3: Implement tap-to-expand as internal state** — layered onto Task 4's glass-pill collapsed strip, not the older plain-Tailwind version
 
 ```tsx
 // frontend/components/ScopeBanner.tsx — replace the collapsed branch
 'use client'
 import { useState } from 'react'
+import { Info } from 'lucide-react'
 
 // ...inside the component, before the collapsed check:
 const [expanded, setExpanded] = useState(false)
 
 if (collapsed && !expanded) {
   return (
-    <div className="border-b border-neutral-200 px-4 py-2 text-sm text-neutral-600 flex justify-between items-center">
-      <button onClick={() => setExpanded(true)} className="text-left">
-        ℹ Covers: Code on Wages · Industrial Relations Code · OSH Code · Code on Social Security — Central &amp; Gujarat Gazette only
+    <div className="flex justify-between items-center gap-3 px-4 py-2 mx-3 my-2 text-sm text-[#33475b] bg-[rgba(238,242,246,0.72)] backdrop-blur-md rounded-full">
+      <button onClick={() => setExpanded(true)} className="flex items-center gap-2 text-left">
+        <Info size={16} className="text-accent shrink-0" />
+        Covers: Code on Wages · Industrial Relations Code · OSH Code · Code on Social Security — Central &amp; Gujarat Gazette only
       </button>
-      <button onClick={onClearHistory} className="underline text-neutral-500 hover:text-neutral-800">Clear history</button>
+      <button onClick={onClearHistory} className="underline text-neutral-500 hover:text-neutral-800 shrink-0">Clear history</button>
     </div>
   )
 }
 ```
 
-The full (non-collapsed, or collapsed-and-expanded) branch renders unchanged from Task 4 — `collapsed && !expanded` is the only new condition; `!collapsed || expanded` falls through to the existing example-chip block.
+The full (non-collapsed, or collapsed-and-expanded) branch renders unchanged from Task 4 — `collapsed && !expanded` is the only new condition; `!collapsed || expanded` falls through to the existing example-chip block. The `Info` import moves up to join the existing `'use client'`/`useState` imports at the top of the file rather than living twice in the same file.
 
 - [ ] **Step 4: Run to verify it passes**
 
@@ -1046,6 +1088,6 @@ git commit -m "Add tap-to-expand for the collapsed scope banner on mobile"
 
 ## Self-Review Notes
 
-- **Spec coverage:** §4.1–4.2 (stacked cards, layout) → Tasks 5, 7. §4.3 (always-visible citation, link-out PDF) → Task 5. §4.4/4.5 (refusal/error cards) → Task 5. §4.6 (two-step loading) → Tasks 5, 7. §4.7 (localStorage, session divider, fresh-context rule, clear control, cap) → Tasks 3, 7 — the `page.test.tsx` "restored historical cards... not sent as history context" test directly verifies the fresh-context rule. §4.8 (input interaction, chips, multi-turn) → Tasks 6, 7. §4.9 (mobile) → Task 9. §4.10 (visual tone) → Task 8.
-- **Placeholder scan:** no TBD/TODO. Caught during self-review: Task 3's original `saveHistory` had a dead-code age-pruning branch (`filter` predicate always `true`) — fixed in place so `loadHistory` gates on the real `_savedAt` timestamp instead.
-- **Type consistency:** `QACardData`/`Citation`/`AskResponse` defined once in `lib/types.ts` (Task 1) and used identically across `api.ts`, `history.ts`, `QACard.tsx`, and `page.tsx`. `askQuestion`'s signature matches exactly between its Task 2 test, its Task 2 implementation, and its Task 7 call site in `page.tsx`.
+- **Spec coverage:** §4.1–4.2 (stacked cards, layout) → Tasks 5, 7. §4.3 (always-visible citation, link-out PDF) → Task 5. §4.4/4.5 (refusal/error cards) → Task 5. §4.6 (two-step loading) → Tasks 5, 7. §4.7 (localStorage, session divider, fresh-context rule, clear control, cap) → Tasks 3, 7 — the `page.test.tsx` "restored historical cards... not sent as history context" test directly verifies the fresh-context rule. §4.8 (input interaction, chips, multi-turn) → Tasks 6, 7. §4.9 (mobile) → Task 9. §4.10 / the full `2026-09-06-egazette-design-system.md` (visual tone, color tokens, type scale, glassmorphism, iconography) → Tasks 4, 5, 6, 7 (baked directly into each component's real markup and classes, revised 2026-09-06 against the actual design-system spec rather than the original placeholder pairing) plus Task 8 (fonts + Tailwind token wiring so those classes resolve correctly).
+- **Placeholder scan:** no TBD/TODO. Caught during self-review: Task 3's original `saveHistory` had a dead-code age-pruning branch (`filter` predicate always `true`) — fixed in place so `loadHistory` gates on the real `_savedAt` timestamp instead. Caught during the 2026-09-06 design-system revision: the original Task 8 used `#1E3A5F` for the accent color and Fraunces/Inter fonts — both were an earlier placeholder guess made before the design-system brainstorm settled on the real values (`#1B3A5B`, IBM Plex) — corrected throughout Tasks 4–8, not just in Task 8's own code block.
+- **Type consistency:** `QACardData`/`Citation`/`AskResponse` defined once in `lib/types.ts` (Task 1) and used identically across `api.ts`, `history.ts`, `QACard.tsx`, and `page.tsx`. `askQuestion`'s signature matches exactly between its Task 2 test, its Task 2 implementation, and its Task 7 call site in `page.tsx`. `lucide-react` is installed once, in Task 4 (first consumer), and imported identically (`import { X } from 'lucide-react'`) in Tasks 4, 5, and 9 — no duplicate install steps.
