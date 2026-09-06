@@ -12,7 +12,14 @@ export async function askQuestion(
     body: JSON.stringify({ question, history }),
   })
   if (!response.ok) {
-    throw new Error(`Ask request failed: ${response.status}`)
+    let detail: string | undefined
+    try {
+      const body = await response.json()
+      detail = typeof body?.detail === 'string' ? body.detail : undefined
+    } catch {
+      // Response body wasn't JSON (or had no body) — fall back below.
+    }
+    throw new Error(detail || `Ask request failed: ${response.status}`)
   }
   return response.json()
 }

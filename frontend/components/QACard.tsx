@@ -34,7 +34,7 @@ export default function QACard({ data, onRetry }: QACardProps) {
       {data.status === 'error' && (
         <div>
           <p className="text-[#A13B3B] flex items-center gap-2">
-            <TriangleAlert size={16} /> Something went wrong answering this.
+            <TriangleAlert size={16} /> {data.answer || 'Something went wrong answering this.'}
           </p>
           <button onClick={() => onRetry(data.id)} className="mt-2 underline text-[#A13B3B]">Try again</button>
         </div>
