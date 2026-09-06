@@ -19,5 +19,8 @@ node_modules/
 # Long backfill runs write ingestion/ingest.log
 *.log
 
+# eval script output
+backend/eval_results.json
+
 # OS
 .DS_Store

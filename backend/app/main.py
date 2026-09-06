@@ -1,22 +1,52 @@
-from fastapi import FastAPI
+# backend/app/main.py
+import logging
+import requests
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from google.genai import errors as genai_errors
 from app.config import get_connection
 from app.retrieval import hybrid_search
 from app.generation import generate_answer
 from app.models import AskRequest, AskResponse
 
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title="e-Gazette Conversational Search — Query API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # tighten to the deployed frontend's real origin once known
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health")
 def health():
+    # Deliberately dependency-free — must answer even if Postgres or the AI
+    # APIs are down. This is a liveness check, not a readiness check: it
+    # confirms the process is running, not that /ask can currently succeed.
     return {"status": "ok"}
 
 
 @app.post("/ask", response_model=AskResponse)
 def ask(request: AskRequest):
-    conn = get_connection()
+    try:
+        conn = get_connection()
+    except Exception as exc:
+        logger.exception("Database connection failed answering a question")
+        raise HTTPException(
+            status_code=503, detail="The database is temporarily unavailable — please try again shortly."
+        ) from exc
+
     try:
         passages = hybrid_search(conn, request.question)
-        return generate_answer(request.question, passages, request.history)
+        history = [{"question": h.question, "answer": h.answer} for h in request.history]
+        return generate_answer(request.question, passages, history)
+    except (requests.HTTPError, genai_errors.ClientError, genai_errors.ServerError) as exc:
+        logger.exception("Upstream AI service failure answering a question")
+        raise HTTPException(
+            status_code=503, detail="The service is temporarily unavailable — please try again shortly."
+        ) from exc
     finally:
         conn.close()

@@ -1,7 +1,16 @@
+# backend/app/retrieval.py
 import psycopg
 from app.embeddings import embed_text
 
 RRF_K = 60  # standard reciprocal-rank-fusion constant
+MIN_SIMILARITY = 0.2  # cosine similarity floor for vector search — a real
+# placeholder pending eval-driven tuning (same "don't guess a final value,
+# tune from real data" spirit as MIN_RELEVANCE_SCORE in generation.py), but
+# unlike an RRF score — which is purely rank-derived and carries no
+# absolute-relevance information, so no value of it can gate refusal — this
+# is a genuine relevance signal, and it must be non-zero: 0.0 here would
+# reproduce the exact bug this constant exists to fix (see the final-review
+# finding that flagged _vector_search returning top_k rows unconditionally).
 
 
 def _keyword_search(conn: psycopg.Connection, question: str, top_k: int) -> list[tuple[int, int]]:
@@ -23,10 +32,11 @@ def _vector_search(conn: psycopg.Connection, question: str, top_k: int) -> list[
     rows = conn.execute(
         """
         SELECT id FROM notification_chunks
+        WHERE 1 - (embedding <=> %s::vector) >= %s
         ORDER BY embedding <=> %s::vector
         LIMIT %s
         """,
-        (query_embedding, top_k),
+        (query_embedding, MIN_SIMILARITY, query_embedding, top_k),
     ).fetchall()
     return [(row[0], position) for position, row in enumerate(rows)]
 
@@ -54,8 +64,10 @@ def hybrid_search(conn: psycopg.Connection, question: str, top_k: int = 5) -> li
     ).fetchall()
 
     # One citation per notification: if several of its chunks scored well,
-    # keep only the best-scoring one (spec §6 — preserves the existing
-    # one-passage-per-source Citation model rather than expanding it).
+    # keep only the best-scoring one (see
+    # docs/superpowers/specs/2026-09-06-notification-chunking-design.md §6 —
+    # preserves the existing one-passage-per-source Citation model rather
+    # than expanding it).
     best_per_notification: dict[int, dict] = {}
     for row in rows:
         chunk_id, notification_id = row[0], row[1]

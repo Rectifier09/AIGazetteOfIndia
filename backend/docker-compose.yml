@@ -1,3 +1,10 @@
+# NOTE: this project's actual local test database is a Homebrew Postgres 17
+# install, not this Docker container — Docker was unavailable on the build
+# machine, and pgvector's Homebrew bottle only targets PG17/18, not the pg16
+# image below. This file is kept for anyone who does have Docker; if you use
+# it, update backend/.env's DATABASE_URL role/password to match (postgres/
+# postgres here vs. the real local OS-user role used otherwise), and expect
+# a port collision if a local Postgres is already running on 5432.
 services:
   db:
     image: pgvector/pgvector:pg16

@@ -50,6 +50,18 @@ def generate_answer(question: str, passages: list[dict], history: list[dict]) ->
     prompt = _build_prompt(question, relevant, history)
     response = _get_client().models.generate_content(model=GENERATION_MODEL, contents=prompt)
 
+    if not response.text:
+        # The model returned no text part — most likely finish_reason SAFETY,
+        # RECITATION, or MAX_TOKENS. Since this prompt instructs the model to
+        # answer strictly from verbatim government text, RECITATION is a
+        # realistic outcome here, not just a theoretical edge case.
+        return AskResponse(
+            answer="I found a matching notification but couldn't draft a safe answer from it — "
+                   "please check the source directly.",
+            refused=True,
+            citations=[],
+        )
+
     citations = [
         Citation(
             source=p["source"], gazette_id=p["gazette_id"], part=p["part"], section=p["section"],

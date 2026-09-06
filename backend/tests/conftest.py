@@ -1,5 +1,20 @@
+from urllib.parse import urlparse
+
 import pytest
-from app.config import get_connection
+from app.config import DATABASE_URL, get_connection
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _guard_against_non_local_database():
+    host = urlparse(DATABASE_URL).hostname
+    if host not in ("localhost", "127.0.0.1"):
+        pytest.exit(
+            f"DATABASE_URL points at '{host}', not localhost — refusing to run "
+            "tests that TRUNCATE tables against what looks like a real, shared "
+            "database. Point backend/.env's DATABASE_URL at the local Postgres "
+            "instance before running tests.",
+            returncode=1,
+        )
 
 
 @pytest.fixture
