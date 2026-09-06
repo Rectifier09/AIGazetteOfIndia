@@ -16,7 +16,7 @@ export default function QACard({ data, onRetry }: QACardProps) {
     <div
       className={`border ${borderClass} rounded-xl p-6 mb-3 bg-[rgba(251,251,250,0.72)] backdrop-blur-md ${data.isHistorical ? 'opacity-60' : ''}`}
     >
-      <p className="font-serif font-semibold text-lg mb-2">Q: {data.question}</p>
+      <p className="font-serif font-semibold text-lg mb-2 text-accent">Q: {data.question}</p>
 
       {data.status === 'loading-searching' && (
         <p className="text-neutral-500 flex items-center gap-2">
