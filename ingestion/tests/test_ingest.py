@@ -91,3 +91,15 @@ def test_off_topic_document_is_rejected_without_embedding_or_insert(db_conn):
 def test_unknown_source_still_raises_value_error(db_conn):
     with pytest.raises(ValueError):
         ingest_notification(db_conn, "martian", "whatever")
+
+
+def test_duplicate_notification_triggers_no_embedding_calls(db_conn):
+    text = (SAMPLES / "central_so_2455.txt").read_text()
+    with patch("ingest.embed_text", return_value=[0.1] * 768) as mock_embed:
+        ingest_notification(db_conn, "central", text)
+        db_conn.commit()
+        mock_embed.reset_mock()
+        ingest_notification(db_conn, "central", text)
+        db_conn.commit()
+
+    mock_embed.assert_not_called()

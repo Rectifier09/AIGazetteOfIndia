@@ -1,9 +1,10 @@
 # ingestion/ingest.py
 import hashlib
 import psycopg
+from chunking import chunk_text
 from extractor import parse_central, parse_gujarat
 from embeddings import embed_text
-from storage import insert_notification
+from storage import insert_notification, insert_chunks
 
 PARSERS = {"central": parse_central, "gujarat": parse_gujarat}
 
@@ -16,8 +17,8 @@ class OutOfScopeError(Exception):
     in six is in scope. A non-None act_reference means the extractor matched a
     "Code on <name>, <year> (<n> of <year>)" citation, which is a reliable
     in-scope signal. Raising instead of inserting keeps off-topic documents out
-    of the database and, because the check runs before embed_text, avoids
-    spending a paid embedding call on them.
+    of the database and, because the check runs before any embedding work,
+    avoids spending a paid embedding call on them.
     """
 
 
@@ -47,7 +48,14 @@ def ingest_notification(
             "not a Labour Code notification."
         )
 
-    embedding = embed_text(record.operative_text)
-    return insert_notification(
-        conn, record, embedding=embedding, file_hash=file_hash, source_url=source_url
+    notification_id, is_new = insert_notification(
+        conn, record, file_hash=file_hash, source_url=source_url
     )
+    if is_new:
+        # Only a genuinely new row pays for chunking/embedding — re-ingesting
+        # an already-present notification now costs one cheap lookup-and-skip
+        # instead of a wasted embedding API call per chunk.
+        chunks = chunk_text(record.operative_text)
+        embedded_chunks = [(chunk, embed_text(chunk)) for chunk in chunks]
+        insert_chunks(conn, notification_id, embedded_chunks)
+    return notification_id
