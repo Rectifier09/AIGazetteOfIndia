@@ -36,6 +36,22 @@ else adopted from Apple's system (rounded/glass surfaces, a bigger type
 scale, a dedicated external-link color, more generous whitespace) is
 additive polish, not a register change.
 
+**Glassmorphism scope — a second deliberate call, made with the trade-off
+shown directly, not assumed.** The frosted-glass treatment started on the
+scope banner only. It was then extended, on request, to the header and the
+pinned input bar (floating chrome — an uncontroversial extension, since
+chrome sitting above scrolling content is exactly what glass surfaces are
+for). Extending it further, to the answer card itself — including the
+citation block, the one piece of UI carrying the most trust-building
+weight in the whole product — was a live, explicit trade-off: a side-by-side
+mockup of the quoted legal text on a solid background versus a blurred one
+was shown before this was confirmed. The call was made anyway: full glass,
+citation block included. Recorded here as a deliberate risk acceptance,
+the same way §5.4 of the parent UX spec records the vector-search bet — if
+citation legibility becomes a real problem once this is in front of users,
+the fallback is a solid (or near-opaque, high-blur-radius-low-opacity)
+citation block specifically, without touching the rest of the glass system.
+
 ## 3. Color tokens
 
 | Token | Value | Usage |
@@ -44,17 +60,23 @@ additive polish, not a register change.
 | `--color-link-external` | `#0071E3` | "View original PDF" and any other link that leaves the site — deliberately distinct from `--color-accent` so an outbound link is visually recognizable at a glance, independent of hover state |
 | `--color-refusal` | `#B8860B` (muted amber) | Refusal card accent (spec §4.4) — desaturated, not alarm-bright |
 | `--color-error` | `#A13B3B` (muted red) | Error card accent (spec §4.5) — desaturated, not alarm-bright |
-| `--color-bg` | `#FBFBFA` | Page background |
-| `--color-bg-banner` | `rgba(238, 242, 246, 0.7)` + `backdrop-filter: blur(6px)` | Scope banner surface (frosted-glass treatment) |
-| `--color-bg-citation` | `#F5F4EF` | Citation block background |
+| `--color-bg` | `#FBFBFA` | Page background — the one surface that stays fully solid, so glass surfaces always have something stable to sit against |
+| `--color-glass-surface` | `rgba(251, 251, 250, 0.72)` + `backdrop-filter: blur(10–14px)` + `1px solid rgba(255, 255, 255, 0.5)` | Header, pinned input bar, answer card container, scope banner — every floating/content surface per §2's glass decision. Blur radius scales slightly by element (banner/citation ~6–8px is enough given their smaller area; header/input bar/card use 10–14px) |
+| `--color-glass-surface-citation` | `rgba(245, 244, 239, 0.4)` + `backdrop-filter: blur(6px)` | Citation block specifically — same glass family, tuned lower-opacity to sit visibly inside the already-glass card without becoming indistinguishable from it |
 | `--color-text-primary` | `#171717` | Question text, primary answer body text |
 | `--color-text-secondary` | `#4A4A44` | Citation block text |
 | `--color-text-muted` | `#9A9A94` | Disclaimer text, secondary metadata |
-| `--color-border` | `#EAE8E1` | Header underline, card dividers |
+| `--color-border` | `#EAE8E1` | Header underline, card dividers (rendered at reduced opacity, e.g. `rgba(234, 232, 225, 0.8)`, on glass surfaces so the border itself doesn't read as a hard edge against a blurred background) |
 
 Deep blue was chosen over the alternative deep green candidate (`#1F4B3F`)
 after a direct side-by-side in the answer-card mockup — both were viable
 ("official" registers either way), blue was the more decisive preference.
+
+Solid, non-glass fallback values (`#EEF2F6` for the general glass surface,
+`#F5F4EF` for the citation surface) should still be defined in code as a
+`@supports not (backdrop-filter: blur(1px))` fallback — glass is a
+progressive enhancement, not a requirement for the page to be legible in a
+browser that doesn't support `backdrop-filter`.
 
 ## 4. Typography
 
@@ -111,6 +133,7 @@ ingredient adopted in the brainstorm.
 | `--radius-sm` | 8px | Small UI elements |
 | `--radius-md` | 12px | Citation blocks |
 | `--radius-lg` | 20px | Scope banner (pill-style, per the Apple rounded-surface ingredient) |
+| `--radius-xl` | 14px | Header, pinned input bar, answer card container — the other glass surfaces added per §2, using a less extreme rounding than the banner's pill shape since these are larger, more rectangular surfaces |
 
 ## 6. Iconography
 
@@ -143,8 +166,13 @@ implementation.
   - Hover: no color change; underline weight increases slightly (visual
     acknowledgment without relying on color, which also keeps behavior
     consistent for colorblind users).
-- **Input field** (the pinned bottom input bar, spec §4.8):
-  - Default: 1px `--color-border`, `--radius-sm`, `--color-bg` background.
+- **Input field** (the pinned bottom input bar, spec §4.8): the bar itself
+  is a `--color-glass-surface` container (`--radius-xl`); the text input
+  inside it is a distinct, slightly-more-opaque surface
+  (`rgba(255, 255, 255, 0.6)`) so the typing area stays visually
+  distinguishable from the glass bar around it, rather than the whole
+  bottom of the page reading as one undifferentiated blurred strip.
+  - Default: 1px `--color-border` at reduced opacity, `--radius-sm`.
   - Focus: border becomes `--color-accent`, same 2px ring treatment as
     buttons for consistency.
   - No error state needed — the input never validates client-side; a
