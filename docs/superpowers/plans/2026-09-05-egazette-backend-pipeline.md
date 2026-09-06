@@ -8,7 +8,7 @@
 
 **Architecture:** A single FastAPI service reads Postgres (`pgvector` extension) directly via a few SQL queries in `retrieval.py` — no ORM, no data-access layer beyond that, since this service only ever reads rows the ingestion pipeline already wrote. Hybrid retrieval (Postgres full-text search + pgvector cosine similarity, merged by reciprocal rank fusion) feeds a Gemini generation call that must cite a real passage or refuse.
 
-**Tech Stack:** Python 3.11+, FastAPI, `psycopg` (v3), PostgreSQL 16 + `pgvector` extension (same database the ingestion pipeline writes to), `google-genai` SDK (Gemini `gemini-embedding-001` for embedding the user's question, `gemini-flash-latest` for generation), pytest + `httpx` (FastAPI `TestClient`), Docker Compose for a local Postgres used only by this plan's own tests.
+**Tech Stack:** Python 3.11+, FastAPI, `psycopg` (v3), PostgreSQL 16 + `pgvector` extension (same database the ingestion pipeline writes to), NVIDIA NIM API (`nvidia/llama-nemotron-embed-vl-1b-v2` for embedding the user's question), `google-genai` SDK (`gemini-flash-latest` for generation), pytest + `httpx` (FastAPI `TestClient`), Docker Compose for a local Postgres used only by this plan's own tests.
 
 **Spec:** `docs/superpowers/specs/2026-09-05-egazette-ux-architecture-design.md`
 
@@ -18,7 +18,8 @@
 - Every substantive answer must cite a real passage (gazette_id, part/section, source) **or** explicitly refuse (spec §1) — enforce this in code, not just in the prompt.
 - Every answer response includes the fixed disclaimer text: `"This is not legal advice — verify against the original Gazette."` (spec §1, §4.3).
 - No vector database service other than `pgvector` on the same Postgres instance (spec §5.3, §5.4) — relationship lookups (if ever added here) stay relational rows, never a graph database.
-- Embedding model: `gemini-embedding-001` (same one the ingestion pipeline used to embed the stored documents — a query embedded with a different model would not be comparable via cosine similarity). Verify current free-tier rate limits at `aistudio.google.com/rate-limit` against the real key.
+- Embedding model: `nvidia/llama-nemotron-embed-vl-1b-v2` at 768 dimensions via NVIDIA's NIM API (`https://integrate.api.nvidia.com/v1/embeddings`) — must match the ingestion pipeline's model exactly, or a query embedded differently than the stored documents is not comparable via cosine similarity. Retrieval embeds with `input_type="query"`; ingestion embeds with `input_type="passage"` — NV-Embed explicitly distinguishes the two and mismatching them degrades retrieval quality.
+- Retrieval operates over `notification_chunks` (one or more chunks per notification, each independently embedded — see `docs/superpowers/specs/2026-09-06-notification-chunking-design.md`), joined back to `notifications` for citation metadata. A "hit" is a chunk; a "citation" is its parent notification.
 - Deployment: this service deploys to **Railway** (FastAPI service, connecting via `DATABASE_URL` to the same managed Postgres the ingestion pipeline populated) — resolves the spec's open deployment-split question; the frontend (separate plan) deploys to Vercel.
 - Local dev/test Postgres for this plan's own test suite is independent of the ingestion pipeline's local dev Postgres — each plan's `docker-compose.yml` runs its own container. Only the real deployed database is ever shared between the two.
 
@@ -99,7 +100,7 @@ httpx==0.27.*
 ```
 # backend/.env.example
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/egazette
-GEMINI_API_KEY=
+NVIDIA_API_KEY=
 ```
 
 > In production, `DATABASE_URL` points at the same Railway Postgres the ingestion pipeline populated. Locally, it points at this plan's own `docker-compose.yml` container (port `5432`, distinct from the ingestion plan's local container on `5433`).
@@ -142,7 +143,6 @@ CREATE TABLE notifications (
     operative_text       TEXT NOT NULL,
     source_url           TEXT,
     file_hash            TEXT NOT NULL,
-    embedding            vector(768),
     created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (source, gazette_id, file_hash)
 );
@@ -154,8 +154,17 @@ CREATE TABLE relationships (
     target            TEXT NOT NULL
 );
 
-CREATE INDEX notifications_fts_idx ON notifications
-    USING GIN (to_tsvector('english', operative_text || ' ' || coalesce(act_reference, '')));
+CREATE TABLE notification_chunks (
+    id                SERIAL PRIMARY KEY,
+    notification_id   INTEGER NOT NULL REFERENCES notifications(id) ON DELETE CASCADE,
+    chunk_index       INTEGER NOT NULL,
+    chunk_text        TEXT NOT NULL,
+    embedding         vector(768) NOT NULL,
+    UNIQUE (notification_id, chunk_index)
+);
+
+CREATE INDEX notification_chunks_fts_idx ON notification_chunks
+    USING GIN (to_tsvector('english', chunk_text));
 
 CREATE INDEX relationships_target_idx ON relationships (target);
 ```
@@ -178,7 +187,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 DATABASE_URL = os.environ["DATABASE_URL"]
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+NVIDIA_API_KEY = os.environ.get("NVIDIA_API_KEY", "")
 
 
 def get_connection() -> psycopg.Connection:
@@ -224,16 +233,19 @@ from app.config import get_connection
 def db_conn():
     conn = get_connection()
     yield conn
-    conn.execute("TRUNCATE notifications, relationships RESTART IDENTITY CASCADE")
+    conn.execute("TRUNCATE notifications, relationships, notification_chunks RESTART IDENTITY CASCADE")
     conn.commit()
     conn.close()
 
 
 @pytest.fixture
 def insert_test_notification(db_conn):
-    """Insert a minimal notification row directly via SQL — this plan has no
-    write-path code of its own (that's the ingestion pipeline's job), so tests
-    that need a row to query against insert one directly."""
+    """Insert a minimal notification + one chunk directly via SQL — this plan
+    has no write-path code of its own (that's the ingestion pipeline's job),
+    so tests that need data to query against insert it directly. The call
+    signature is unchanged from before chunking existed — only what it does
+    internally changed (a chunk row now carries the embedding, not the
+    notification row) — so no test that calls this fixture needs editing."""
     def _insert(gazette_id: str, operative_text: str, embedding: list[float] | None = None,
                 source: str = "central", part: str = "Part II", section: str | None = None,
                 notification_date: str = "22nd May, 2025", act_reference: str | None = None):
@@ -241,15 +253,24 @@ def insert_test_notification(db_conn):
             """
             INSERT INTO notifications
                 (source, gazette_id, part, section, notification_date, act_reference,
-                 operative_text, file_hash, embedding)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 operative_text, file_hash)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (source, gazette_id, part, section, notification_date, act_reference,
-             operative_text, f"test-hash-{gazette_id}", embedding),
+             operative_text, f"test-hash-{gazette_id}"),
         ).fetchone()
+        notification_id = row[0]
+        if embedding is not None:
+            db_conn.execute(
+                """
+                INSERT INTO notification_chunks (notification_id, chunk_index, chunk_text, embedding)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (notification_id, 0, operative_text, embedding),
+            )
         db_conn.commit()
-        return row[0]
+        return notification_id
     return _insert
 ```
 
@@ -280,22 +301,42 @@ git commit -m "Scaffold Query API: config, models, local Postgres for tests"
 
 ```python
 # backend/tests/test_embeddings.py
+import pytest
 from unittest.mock import patch, MagicMock
-from app.embeddings import embed_text
+from app.embeddings import embed_text, EMBEDDING_MODEL, NVIDIA_EMBEDDINGS_URL
 
 
-def test_embed_text_returns_vector_from_gemini_response():
-    fake_response = MagicMock()
-    fake_response.embeddings = [MagicMock(values=[0.1, 0.2, 0.3])]
+def _fake_response(vector):
+    fake = MagicMock()
+    fake.json.return_value = {"data": [{"embedding": vector}]}
+    fake.raise_for_status.return_value = None
+    return fake
 
-    with patch("app.embeddings._client") as mock_client:
-        mock_client.models.embed_content.return_value = fake_response
+
+def test_embed_text_returns_vector_from_nvidia_response():
+    with patch("app.embeddings.NVIDIA_API_KEY", "test-key"), \
+         patch("app.embeddings.requests.post", return_value=_fake_response([0.1, 0.2, 0.3])) as mock_post:
         result = embed_text("Is the Code on Wages in force in Gujarat?")
 
     assert result == [0.1, 0.2, 0.3]
-    mock_client.models.embed_content.assert_called_once()
-    call_kwargs = mock_client.models.embed_content.call_args.kwargs
-    assert call_kwargs["model"] == "gemini-embedding-001"
+    call = mock_post.call_args
+    assert call.args[0] == NVIDIA_EMBEDDINGS_URL
+    assert call.kwargs["json"]["model"] == EMBEDDING_MODEL
+    assert call.kwargs["json"]["dimensions"] == 768
+
+
+def test_embed_text_defaults_to_query_input_type():
+    with patch("app.embeddings.NVIDIA_API_KEY", "test-key"), \
+         patch("app.embeddings.requests.post", return_value=_fake_response([0.0] * 768)) as mock_post:
+        embed_text("Is the Code on Wages in force in Gujarat?")
+
+    assert mock_post.call_args.kwargs["json"]["input_type"] == "query"
+
+
+def test_embed_text_raises_a_clear_error_when_the_api_key_is_missing():
+    with patch("app.embeddings.NVIDIA_API_KEY", ""):
+        with pytest.raises(RuntimeError, match="NVIDIA_API_KEY"):
+            embed_text("anything")
 ```
 
 - [ ] **Step 2: Run to verify it fails**
@@ -307,17 +348,38 @@ Expected: FAIL with `ModuleNotFoundError: No module named 'app.embeddings'`
 
 ```python
 # backend/app/embeddings.py
-from google import genai
-from app.config import GEMINI_API_KEY
+import requests
+from app.config import NVIDIA_API_KEY
 
-_client = genai.Client(api_key=GEMINI_API_KEY)
+NVIDIA_EMBEDDINGS_URL = "https://integrate.api.nvidia.com/v1/embeddings"
+EMBEDDING_MODEL = "nvidia/llama-nemotron-embed-vl-1b-v2"
+EMBEDDING_DIMENSIONS = 768
 
-EMBEDDING_MODEL = "gemini-embedding-001"
 
-
-def embed_text(text: str) -> list[float]:
-    response = _client.models.embed_content(model=EMBEDDING_MODEL, contents=text)
-    return list(response.embeddings[0].values)
+def embed_text(text: str, input_type: str = "query") -> list[float]:
+    """input_type defaults to "query" here — this service only ever embeds the
+    user's question, never a stored document (that's the ingestion pipeline's
+    job, which defaults to "passage"). Mismatching the two degrades retrieval
+    quality per NV-Embed's own documentation."""
+    if not NVIDIA_API_KEY:
+        raise RuntimeError("NVIDIA_API_KEY is not set — cannot call the embedding API.")
+    response = requests.post(
+        NVIDIA_EMBEDDINGS_URL,
+        headers={
+            "Authorization": f"Bearer {NVIDIA_API_KEY}",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        },
+        json={
+            "input": [text],
+            "model": EMBEDDING_MODEL,
+            "input_type": input_type,
+            "dimensions": EMBEDDING_DIMENSIONS,
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+    return response.json()["data"][0]["embedding"]
 ```
 
 - [ ] **Step 4: Run to verify it passes**
@@ -341,8 +403,8 @@ git commit -m "Add Gemini embedding wrapper for query embedding"
 - Test: `backend/tests/test_retrieval.py`
 
 **Interfaces:**
-- Consumes: `embed_text` (Task 2); Postgres schema from Task 1 (`notifications` table, FTS index, `embedding` column) — populated in production by the ingestion pipeline, populated in these tests by the `insert_test_notification` fixture.
-- Produces: `hybrid_search(conn, question: str, top_k: int = 5) -> list[dict]` (each dict: `{id, source, gazette_id, part, section, notification_date, operative_text, source_url, score}`, ordered best-first) from `app/retrieval.py`, used by `generation.py` (Task 4) and `main.py` (Task 5).
+- Consumes: `embed_text` (Task 2); Postgres schema from Task 1 (`notification_chunks` joined to `notifications`) — populated in production by the ingestion pipeline, populated in these tests by the `insert_test_notification` fixture.
+- Produces: `hybrid_search(conn, question: str, top_k: int = 5) -> list[dict]` (each dict: `{id, source, gazette_id, part, section, notification_date, operative_text, source_url, score}` — `id` is the **notification's** id and `operative_text` is the **matching chunk's text**, kept under that key name deliberately so `generation.py` (Task 4) needs zero changes despite the underlying data now being a chunk, not a whole document — ordered best-first) from `app/retrieval.py`, used by `generation.py` (Task 4) and `main.py` (Task 5).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -392,11 +454,9 @@ RRF_K = 60  # standard reciprocal-rank-fusion constant
 def _keyword_search(conn: psycopg.Connection, question: str, top_k: int) -> list[tuple[int, int]]:
     rows = conn.execute(
         """
-        SELECT id, ts_rank(to_tsvector('english', operative_text || ' ' || coalesce(act_reference, '')),
-                            plainto_tsquery('english', %s)) AS rank
-        FROM notifications
-        WHERE to_tsvector('english', operative_text || ' ' || coalesce(act_reference, ''))
-              @@ plainto_tsquery('english', %s)
+        SELECT id, ts_rank(to_tsvector('english', chunk_text), plainto_tsquery('english', %s)) AS rank
+        FROM notification_chunks
+        WHERE to_tsvector('english', chunk_text) @@ plainto_tsquery('english', %s)
         ORDER BY rank DESC
         LIMIT %s
         """,
@@ -406,11 +466,10 @@ def _keyword_search(conn: psycopg.Connection, question: str, top_k: int) -> list
 
 
 def _vector_search(conn: psycopg.Connection, question: str, top_k: int) -> list[tuple[int, int]]:
-    query_embedding = embed_text(question)
+    query_embedding = embed_text(question, input_type="query")
     rows = conn.execute(
         """
-        SELECT id FROM notifications
-        WHERE embedding IS NOT NULL
+        SELECT id FROM notification_chunks
         ORDER BY embedding <=> %s
         LIMIT %s
         """,
@@ -423,30 +482,41 @@ def hybrid_search(conn: psycopg.Connection, question: str, top_k: int = 5) -> li
     keyword_hits = _keyword_search(conn, question, top_k)
     vector_hits = _vector_search(conn, question, top_k)
 
-    scores: dict[int, float] = {}
-    for notification_id, rank in keyword_hits + vector_hits:
-        scores[notification_id] = scores.get(notification_id, 0.0) + 1.0 / (RRF_K + rank)
+    chunk_scores: dict[int, float] = {}
+    for chunk_id, rank in keyword_hits + vector_hits:
+        chunk_scores[chunk_id] = chunk_scores.get(chunk_id, 0.0) + 1.0 / (RRF_K + rank)
 
-    ranked_ids = sorted(scores, key=lambda nid: scores[nid], reverse=True)[:top_k]
-    if not ranked_ids:
+    if not chunk_scores:
         return []
 
     rows = conn.execute(
         """
-        SELECT id, source, gazette_id, part, section, notification_date, operative_text, source_url
-        FROM notifications WHERE id = ANY(%s)
+        SELECT c.id, c.notification_id, c.chunk_text, n.source, n.gazette_id, n.part,
+               n.section, n.notification_date, n.source_url
+        FROM notification_chunks c
+        JOIN notifications n ON n.id = c.notification_id
+        WHERE c.id = ANY(%s)
         """,
-        (ranked_ids,),
+        (list(chunk_scores.keys()),),
     ).fetchall()
-    by_id = {
-        row[0]: {
-            "id": row[0], "source": row[1], "gazette_id": row[2], "part": row[3],
-            "section": row[4], "notification_date": row[5], "operative_text": row[6],
-            "source_url": row[7], "score": scores[row[0]],
+
+    # One citation per notification: if several of its chunks scored well,
+    # keep only the best-scoring one (spec §6 — preserves the existing
+    # one-passage-per-source Citation model rather than expanding it).
+    best_per_notification: dict[int, dict] = {}
+    for row in rows:
+        chunk_id, notification_id = row[0], row[1]
+        score = chunk_scores[chunk_id]
+        candidate = {
+            "id": notification_id, "source": row[3], "gazette_id": row[4], "part": row[5],
+            "section": row[6], "notification_date": row[7], "operative_text": row[2],
+            "source_url": row[8], "score": score,
         }
-        for row in rows
-    }
-    return [by_id[nid] for nid in ranked_ids if nid in by_id]
+        existing = best_per_notification.get(notification_id)
+        if existing is None or score > existing["score"]:
+            best_per_notification[notification_id] = candidate
+
+    return sorted(best_per_notification.values(), key=lambda r: r["score"], reverse=True)[:top_k]
 ```
 
 - [ ] **Step 4: Run to verify it passes**
