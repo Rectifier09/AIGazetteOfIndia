@@ -21,41 +21,42 @@ def chunk_text(text: str, max_chars: int = 6000, overlap: int = 200) -> list[str
     chunks: list[str] = []
     current = ""
 
-    for paragraph in paragraphs:
+    for index, paragraph in enumerate(paragraphs):
+        is_last_paragraph = index == len(paragraphs) - 1
+
         if len(paragraph) > max_chars:
-            # Flush current with overlap preservation for hard-split boundary
+            # Entry side: carry the tail of whatever chunk precedes this hard
+            # split into its first slice, sized so the carry-prefixed slice
+            # still respects max_chars. Only flush `current` as its own chunk
+            # if it holds more than a bare carry-seed left over from an
+            # earlier hard split (len(current) > overlap) — otherwise a run
+            # of consecutive oversized paragraphs would emit that seed twice:
+            # once as its own tiny chunk, once again as the next slice's prefix.
+            carry = ""
             if current.strip():
-                chunks.append(current.strip())
-                carry = current[-overlap:] if current else ""
-            else:
-                carry = ""
-
-            step = max_chars - overlap
-            is_first_slice = True
-
-            for start in range(0, len(paragraph), step):
-                slice_chunk = paragraph[start:start + max_chars]
-
-                if is_first_slice and carry.strip():
-                    # Try to include carry in first hard-split slice
-                    slice_with_carry = f"{carry}\n\n{slice_chunk}"
-                    if len(slice_with_carry) <= max_chars:
-                        chunks.append(slice_with_carry)
-                    else:
-                        # Guard: drop carry if it would exceed max_chars
-                        chunks.append(slice_chunk)
-                else:
-                    chunks.append(slice_chunk)
-
-                is_first_slice = False
-
-            # Carry from last hard-split chunk into current for next paragraph
-            if chunks:
-                last_chunk = chunks[-1]
-                current = last_chunk[-overlap:] if len(last_chunk) >= overlap else last_chunk
-            else:
+                carry = current[-overlap:]
+                if len(current.strip()) > overlap:
+                    chunks.append(current.strip())
                 current = ""
 
+            prefix = f"{carry}\n\n" if carry.strip() else ""
+            first_slice_len = max_chars - len(prefix)
+            chunks.append(f"{prefix}{paragraph[:first_slice_len]}")
+
+            step = max_chars - overlap
+            pos = first_slice_len - overlap
+            while pos < len(paragraph):
+                chunks.append(paragraph[pos:pos + max_chars])
+                pos += step
+
+            # Exit side: carry the tail of the last hard-split slice into
+            # whatever chunk begins next, so the boundary leaving the hard
+            # split also overlaps. Skip this when the hard split is the last
+            # paragraph — there's nothing left to carry into, and doing it
+            # anyway would leave a bare carry-seed that the final flush below
+            # would emit as a spurious extra chunk.
+            if not is_last_paragraph:
+                current = chunks[-1][-overlap:]
             continue
 
         candidate = f"{current}\n\n{paragraph}" if current else paragraph
@@ -63,10 +64,6 @@ def chunk_text(text: str, max_chars: int = 6000, overlap: int = 200) -> list[str
             chunks.append(current.strip())
             carry = current[-overlap:] if current else ""
             restarted = f"{carry}\n\n{paragraph}" if carry.strip() else paragraph
-            # Guard: if the carried-over overlap plus this paragraph would
-            # itself exceed max_chars, drop the carry rather than violate the
-            # max_chars contract on the next chunk (paragraph alone is
-            # already known to be <= max_chars from the check above).
             current = restarted if len(restarted) <= max_chars else paragraph
         else:
             current = candidate
