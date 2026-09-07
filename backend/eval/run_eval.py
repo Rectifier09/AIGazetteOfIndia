@@ -1,11 +1,12 @@
 # backend/eval/run_eval.py
 import json
+import os
 import sys
 import time
 from pathlib import Path
 import requests
 
-API_URL = "http://localhost:8000"
+API_URL = os.environ.get("EVAL_API_URL", "http://localhost:8000")
 QUESTIONS_FILE = Path(__file__).parent / "questions.md"
 RESULTS_FILE = Path(__file__).parent.parent / "eval_results.json"
 MAX_RETRIES = 5
