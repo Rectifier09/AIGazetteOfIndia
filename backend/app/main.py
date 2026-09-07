@@ -15,7 +15,10 @@ app = FastAPI(title="e-Gazette Conversational Search — Query API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten to the deployed frontend's real origin once known
+    allow_origins=[
+        "https://aigazetteofindia.vercel.app",
+        "https://frontend-nine-pi-0x0iky59ud.vercel.app",
+    ],
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
