@@ -1,4 +1,5 @@
 # backend/app/main.py
+# Auto-deploy verification: Railway GitHub App now has repo access (2026-09-07).
 import logging
 import requests
 from fastapi import FastAPI, HTTPException
